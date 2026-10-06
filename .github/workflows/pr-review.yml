@@ -1,8 +1,13 @@
 name: AI PR review
 
-# The moment a PR is opened or updated (forks included), review the diff with
+# The moment a PR is opened or reopened (forks included), review the diff with
 # an AI model and post the verdict as a PR comment.
 # Comments only — it never approves, requests changes formally, or merges.
+#
+# Quota guardrails (the backend may be a small free-tier deployment):
+# - fires on opened/reopened only, never on every push; skips drafts and bots;
+# - monthly review budget tracked in .github/pr-review-budget.json
+#   (default 30, set REVIEW_MONTHLY_LIMIT repo variable to change).
 #
 # Model backend is switchable via the REVIEW_BACKEND repo variable:
 #   freellmapi (default): the owner's FreeLLMAPI gateway.
@@ -11,12 +16,12 @@ name: AI PR review
 #     Needs repo secret META_API_KEY (create at https://dev.meta.ai);
 #     REVIEW_MODEL defaults to muse-spark-1.3.
 #
-# Security: pull_request_target is used so fork PRs can be commented on, but
-# nothing from the PR is ever executed — the script below comes from the base
-# branch and the diff is only ever sent to the LLM as data.
+# Portable: the script reads the repo from GITHUB_REPOSITORY, so these two
+# files (.github/workflows/pr-review.yml + scripts/pr_review.py) drop into
+# any repo — just add that repo's secrets/variables.
 on:
   pull_request_target:
-    types: [opened, synchronize, reopened]
+    types: [opened, reopened]
   workflow_dispatch:
     inputs:
       pr:
@@ -25,7 +30,11 @@ on:
 
 permissions:
   pull-requests: write
-  contents: read
+  contents: write
+
+# Security: pull_request_target is used so fork PRs can be commented on, but
+# nothing from the PR is ever executed — the script below comes from the base
+# branch and the diff is only ever sent to the LLM as data.
 
 jobs:
   review:
