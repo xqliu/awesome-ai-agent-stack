@@ -40,6 +40,10 @@ permissions:
 
 jobs:
   review:
+    # Settings kill-switch: set the PR_REVIEW_ENABLED repo variable to "false"
+    # (Settings → Secrets and variables → Actions → Variables) to turn the
+    # reviewer off for that repo. Unset (or anything else) = enabled.
+    if: ${{ vars.PR_REVIEW_ENABLED != 'false' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
