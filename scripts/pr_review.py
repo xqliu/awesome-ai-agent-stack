@@ -61,8 +61,12 @@ def main() -> None:
         base_url = (os.environ.get("FREELLMAPI_URL", "").strip()
                     or DEFAULT_FREELLMAPI_URL).rstrip("/")
         model = os.environ.get("REVIEW_MODEL", "").strip()
+        if not model and key:
+            model = discover_model(base_url, key)
+            if model:
+                print(f"REVIEW_MODEL not set — auto-selected {model} from the gateway.")
         max_tokens = 1500
-        missing = "FREELLMAPI_KEY secret or REVIEW_MODEL variable"
+        missing = "FREELLMAPI_KEY secret"
     else:  # github — GitHub Models, free, no secrets; GITHUB_TOKEN is enough
         key = os.environ.get("GH_TOKEN", "").strip()
         base_url = "https://models.github.ai/inference"
@@ -156,6 +160,26 @@ def main() -> None:
         budget_consume(budget, repo_flag)
     else:
         print(f"Failed to post comment: {out.stderr.strip()}")
+
+
+def discover_model(base_url: str, key: str) -> str:
+    """Pick a model from the gateway when REVIEW_MODEL isn't set.
+
+    Prefers small/fast model names; falls back to the first listed model.
+    """
+    try:
+        req = urllib.request.Request(
+            base_url + "/v1/models", headers={"Authorization": f"Bearer {key}"})
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            data = json.load(resp)
+        ids = [m.get("id") for m in data.get("data", []) if m.get("id")]
+        for hint in ("mini", "flash", "haiku", "3-5", "4o-mini", "turbo"):
+            for i in ids:
+                if hint in i.lower():
+                    return i
+        return ids[0] if ids else ""
+    except Exception:
+        return ""
 
 
 def budget_check(repo_flag) -> dict | None:
