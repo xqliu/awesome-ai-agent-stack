@@ -2,11 +2,15 @@
 """Instant AI review for pull requests, posted as a PR comment.
 
 Triggered by .github/workflows/pr-review.yml on pull_request_target
-(opened/synchronize/reopened). Uses the owner's FreeLLMAPI gateway
-(OpenAI-compatible) as the model backend.
+(opened/synchronize/reopened). The model backend is switchable:
 
-Needs env: GH_TOKEN, FREELLMAPI_KEY, REVIEW_MODEL, PR_NUMBER.
-Optional env: FREELLMAPI_URL (defaults to the owner's Koyeb gateway).
+- freellmapi (default): the owner's FreeLLMAPI gateway (OpenAI-compatible).
+  Needs env FREELLMAPI_KEY, REVIEW_MODEL. Optional FREELLMAPI_URL.
+- meta: Muse via the Meta Model API (https://api.meta.ai/v1, OpenAI
+  chat-completions wire). Needs env META_API_KEY; REVIEW_MODEL defaults
+  to muse-spark-1.3.
+
+Select with env REVIEW_BACKEND=meta|freellmapi. Needs PR_NUMBER too.
 
 Comments only — never approves, never requests changes formally, never merges.
 The PR diff is treated as data under review, never as instructions.
@@ -18,7 +22,8 @@ import urllib.request
 
 OWNER = "tayyabimam1"
 REPO = "awesome-ai-agent-stack"
-DEFAULT_URL = "https://gateway.example.com"
+DEFAULT_FREELLMAPI_URL = "https://gateway.example.com"
+META_URL = "https://api.meta.ai/v1"
 MARKER_TEXT = "Automated review, posted by the repo owner's assistant"
 MAX_DIFF = 40000
 
@@ -30,16 +35,26 @@ def sh(*args):
 
 def main() -> None:
     pr = os.environ.get("PR_NUMBER", "").strip()
-    key = os.environ.get("FREELLMAPI_KEY", "").strip()
-    model = os.environ.get("REVIEW_MODEL", "").strip()
-    base_url = os.environ.get("FREELLMAPI_URL", "").strip() or DEFAULT_URL
-    base_url = base_url.rstrip("/")
+    backend = os.environ.get("REVIEW_BACKEND", "freellmapi").strip().lower()
+    if backend == "meta":
+        key = os.environ.get("META_API_KEY", "").strip()
+        base_url = META_URL
+        model = os.environ.get("REVIEW_MODEL", "").strip() or "muse-spark-1.3"
+        max_tokens = 2500  # Muse always reasons; leave room past the reasoning
+        missing = "META_API_KEY secret"
+    else:
+        key = os.environ.get("FREELLMAPI_KEY", "").strip()
+        base_url = (os.environ.get("FREELLMAPI_URL", "").strip()
+                    or DEFAULT_FREELLMAPI_URL).rstrip("/")
+        model = os.environ.get("REVIEW_MODEL", "").strip()
+        max_tokens = 1500
+        missing = "FREELLMAPI_KEY secret or REVIEW_MODEL variable"
     if not pr:
         print("PR_NUMBER not set, nothing to do.")
         return
     if not key or not model:
-        print("FREELLMAPI_KEY secret or REVIEW_MODEL variable not set — "
-              "skipping AI review (add them in repo Settings to enable).")
+        print(f"{missing} not set — skipping AI review "
+              "(add them in repo Settings to enable).")
         return
 
     repo_flag = ["-R", f"{OWNER}/{REPO}"]
@@ -89,7 +104,7 @@ def main() -> None:
         data=json.dumps({"model": model,
                          "messages": [{"role": "user", "content": prompt}],
                          "temperature": 0.2,
-                         "max_tokens": 1500}).encode("utf-8"),
+                         "max_tokens": max_tokens}).encode("utf-8"),
         method="POST",
         headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
     )
