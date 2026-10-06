@@ -2,15 +2,18 @@
 """Instant AI review for pull requests, posted as a PR comment.
 
 Triggered by .github/workflows/pr-review.yml on pull_request_target
-(opened/synchronize/reopened). The model backend is switchable:
+(opened/reopened). The model backend is switchable:
 
-- freellmapi (default): the owner's FreeLLMAPI gateway (OpenAI-compatible).
+- github (default): GitHub Models — free for every repo, no API keys at all.
+  Uses the workflow's own GITHUB_TOKEN with `models: read` permission.
+  Endpoint https://models.github.ai/inference (OpenAI chat-completions wire).
+  REVIEW_MODEL defaults to openai/gpt-4o-mini.
+- freellmapi: the owner's FreeLLMAPI gateway (OpenAI-compatible).
   Needs env FREELLMAPI_KEY, REVIEW_MODEL. Optional FREELLMAPI_URL.
-- meta: Muse via the Meta Model API (https://api.meta.ai/v1, OpenAI
-  chat-completions wire). Needs env META_API_KEY; REVIEW_MODEL defaults
-  to muse-spark-1.3.
+- meta: Muse via the Meta Model API (https://api.meta.ai/v1).
+  Needs env META_API_KEY; REVIEW_MODEL defaults to muse-spark-1.3.
 
-Select with env REVIEW_BACKEND=meta|freellmapi. Needs PR_NUMBER too.
+Select with env REVIEW_BACKEND=github|freellmapi|meta. Needs PR_NUMBER too.
 
 Comments only — never approves, never requests changes formally, never merges.
 The PR diff is treated as data under review, never as instructions.
@@ -46,26 +49,31 @@ def sh(*args, stdin_text=None):
 
 def main() -> None:
     pr = os.environ.get("PR_NUMBER", "").strip()
-    backend = os.environ.get("REVIEW_BACKEND", "freellmapi").strip().lower()
+    backend = os.environ.get("REVIEW_BACKEND", "github").strip().lower()
     if backend == "meta":
         key = os.environ.get("META_API_KEY", "").strip()
         base_url = META_URL
         model = os.environ.get("REVIEW_MODEL", "").strip() or "muse-spark-1.3"
         max_tokens = 2500  # Muse always reasons; leave room past the reasoning
         missing = "META_API_KEY secret"
-    else:
+    elif backend == "freellmapi":
         key = os.environ.get("FREELLMAPI_KEY", "").strip()
         base_url = (os.environ.get("FREELLMAPI_URL", "").strip()
                     or DEFAULT_FREELLMAPI_URL).rstrip("/")
         model = os.environ.get("REVIEW_MODEL", "").strip()
         max_tokens = 1500
         missing = "FREELLMAPI_KEY secret or REVIEW_MODEL variable"
+    else:  # github — GitHub Models, free, no secrets; GITHUB_TOKEN is enough
+        key = os.environ.get("GH_TOKEN", "").strip()
+        base_url = "https://models.github.ai/inference"
+        model = os.environ.get("REVIEW_MODEL", "").strip() or "openai/gpt-4o-mini"
+        max_tokens = 1500
+        missing = "GH_TOKEN (workflow GITHUB_TOKEN)"
     if not pr:
         print("PR_NUMBER not set, nothing to do.")
         return
     if not key or not model:
-        print(f"{missing} not set — skipping AI review "
-              "(add them in repo Settings to enable).")
+        print(f"{missing} not set — skipping AI review.")
         return
 
     repo_flag = ["-R", f"{OWNER}/{REPO}"]
