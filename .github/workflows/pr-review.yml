@@ -4,8 +4,10 @@ name: AI PR review
 # the team's FreeLLMAPI gateway and post the verdict as a PR comment.
 # Comments only — it never approves, requests changes formally, or merges.
 #
-# Setup (one time, repo Settings → Secrets and variables → Actions):
-#   - Secret FREELLMAPI_KEY: the unified FreeLLMAPI gateway key.
+# Config lives in repo Settings → Secrets and variables → Actions (nothing
+# sensitive is committed to this repo):
+#   - Secret   FREELLMAPI_KEY: the unified FreeLLMAPI gateway key.
+#   - Variable FREELLMAPI_URL: the gateway base URL (https://.../v1).
 #   - Nothing else needed: the model is auto-picked from the gateway
 #     (override with the REVIEW_MODEL variable if you want a specific one).
 #
@@ -46,6 +48,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REVIEW_BACKEND: freellmapi
           FREELLMAPI_KEY: ${{ secrets.FREELLMAPI_KEY }}
+          FREELLMAPI_URL: ${{ vars.FREELLMAPI_URL }}
           REVIEW_MODEL: ${{ vars.REVIEW_MODEL }}
           PR_NUMBER: ${{ github.event.inputs.pr || github.event.pull_request.number }}
         run: python scripts/pr_review.py
